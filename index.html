@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporary Audio Player</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      padding-bottom: 190px;
+    }
+
+    header {
+      padding: 24px 20px 12px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin-bottom: 5px;
+    }
+
+    header p {
+      margin-top: 0;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: auto;
+      padding: 0 20px;
+    }
+
+    .upload {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    input[type="file"] {
+      max-width: 100%;
+    }
+
+    #playlist {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .track {
+      background: white;
+      margin-bottom: 8px;
+      padding: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+    }
+
+    .track:hover {
+      background: #eee;
+    }
+
+    .track.active {
+      font-weight: bold;
+      background: #ddd;
+    }
+
+    .drag {
+      cursor: grab;
+      color: #777;
+      font-size: 18px;
+    }
+
+    .track-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .delete-track {
+      background: none;
+      color: #777;
+      width: auto;
+      height: auto;
+      font-size: 18px;
+      padding: 5px;
+    }
+
+    .clear-button {
+      display: block;
+      margin: 20px auto;
+      background: none;
+      color: #777;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      width: auto;
+      height: auto;
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+
+    .player {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 1px solid #ccc;
+      padding: 16px 20px;
+      z-index: 100;
+    }
+
+    .player-inner {
+      max-width: 700px;
+      margin: auto;
+    }
+
+    #nowPlaying {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #progress {
+      flex: 1;
+    }
+
+    .time {
+      font-size: 13px;
+      min-width: 42px;
+      text-align: center;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      margin-top: 12px;
+    }
+
+    .control-button {
+      border: none;
+      background: #222;
+      color: white;
+      border-radius: 50%;
+      width: 46px;
+      height: 46px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    #playPause {
+      width: 56px;
+      height: 56px;
+      font-size: 22px;
+    }
+
+    button:hover {
+      opacity: 0.8;
+    }
+
+    #emptyMessage {
+      text-align: center;
+      color: #888;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Audio Player</h1>
+  <p>Files are kept on this device for 24 hours.</p>
+</header>
+
+<div class="container">
+
+  <div class="upload">
+    <p><strong>Add audio files</strong></p>
+    <input type="file" id="fileInput" accept="audio/*" multiple>
+  </div>
+
+  <p id="emptyMessage">No tracks uploaded yet.</p>
+
+  <ul id="playlist"></ul>
+
+  <button id="clearPlaylist" class="clear-button">
+    Clear playlist
+  </button>
+
+</div>
+
+
+<div class="player">
+  <div class="player-inner">
+
+    <div id="nowPlaying">No track selected</div>
+
+    <div class="progress-row">
+
+      <span id="elapsed" class="time">0:00</span>
+
+      <input
+        type="range"
+        id="progress"
+        min="0"
+        max="100"
+        value="0"
+        step="0.1"
+      >
+
+      <span id="duration" class="time">0:00</span>
+
+    </div>
+
+    <div class="controls">
+
+      <button id="previous" class="control-button" title="Previous">
+        ⏮
+      </button>
+
+      <button id="playPause" class="control-button" title="Play / Pause">
+        ▶
+      </button>
+
+      <button id="next" class="control-button" title="Next">
+        ⏭
+      </button>
+
+    </div>
+
+  </div>
+</div>
+
+<audio id="audio"></audio>
+
+
+<script>
+
+const STORAGE_TIME = 24 * 60 * 60 * 1000;
+
+const audio = document.getElementById("audio");
+const fileInput = document.getElementById("fileInput");
+const playlistElement = document.getElementById("playlist");
+
+const playPauseButton = document.getElementById("playPause");
+const previousButton = document.getElementById("previous");
+const nextButton = document.getElementById("next");
+
+const progress = document.getElementById("progress");
+const elapsed = document.getElementById("elapsed");
+const duration = document.getElementById("duration");
+const nowPlaying = document.getElementById("nowPlaying");
+
+const clearPlaylistButton =
+  document.getElementById("clearPlaylist");
+
+const emptyMessage =
+  document.getElementById("emptyMessage");
+
+
+let playlist = [];
+let currentIndex = -1;
+let currentObjectURL = null;
+let db;
+
+
+// -----------------------------
+// DATABASE
+// -----------------------------
+
+const request =
+  indexedDB.open("temporaryAudioPlayer", 1);
+
+
+request.onupgradeneeded = function(event) {
+
+  db = event.target.result;
+
+  if (!db.objectStoreNames.contains("tracks")) {
+
+    db.createObjectStore(
+      "tracks",
+      {
+        keyPath: "id",
+        autoIncrement: true
+      }
+    );
+
+  }
+
+};
+
+
+request.onsuccess = async function(event) {
+
+  db = event.target.result;
+
+  await removeExpiredTracks();
+  await loadStoredTracks();
+
+};
+
+
+request.onerror = function() {
+
+  alert(
+    "Your browser could not access local storage."
+  );
+
+};
+
+
+// -----------------------------
+// LOAD STORED TRACKS
+// -----------------------------
+
+function loadStoredTracks() {
+
+  return new Promise(resolve => {
+
+    const transaction =
+      db.transaction("tracks", "readonly");
+
+    const store =
+      transaction.objectStore("tracks");
+
+    const request = store.getAll();
+
+
+    request.onsuccess = function() {
+
+      playlist = request.result
+        .sort((a, b) => a.order - b.order);
+
+      renderPlaylist();
+
+      if (playlist.length > 0) {
+        loadTrack(0);
+      }
+
+      resolve();
+
+    };
+
+  });
+
+}
+
+
+// -----------------------------
+// REMOVE EXPIRED FILES
+// -----------------------------
+
+function removeExpiredTracks() {
+
+  return new Promise(resolve => {
+
+    const transaction =
+      db.transaction("tracks", "readwrite");
+
+    const store =
+      transaction.objectStore("tracks");
+
+    const request = store.openCursor();
+
+    const now = Date.now();
+
+
+    request.onsuccess = function(event) {
+
+      const cursor = event.target.result;
+
+      if (cursor) {
+
+        const track = cursor.value;
+
+        if (
+          now - track.uploadedAt >= STORAGE_TIME
+        ) {
+          cursor.delete();
+        }
+
+        cursor.continue();
+
+      } else {
+
+        resolve();
+
+      }
+
+    };
+
+  });
+
+}
+
+
+// -----------------------------
+// ADD FILES
+// -----------------------------
+
+fileInput.addEventListener(
+  "change",
+  async function(event) {
+
+    const files =
+      Array.from(event.target.files);
+
+    for (const file of files) {
+
+      await saveFile(file);
+
+    }
+
+    fileInput.value = "";
+
+    await loadStoredTracks();
+
+  }
+);
+
+
+function saveFile(file) {
+
+  return new Promise(resolve => {
+
+    const transaction =
+      db.transaction("tracks", "readwrite");
+
+    const store =
+      transaction.objectStore("tracks");
+
+    store.add({
+
+      name: file.name,
+
+      file: file,
+
+      uploadedAt: Date.now(),
+
+      order: playlist.length
+
+    });
+
+
+    transaction.oncomplete = resolve;
+
+  });
+
+}
+
+
+// -----------------------------
+// DISPLAY PLAYLIST
+// -----------------------------
+
+function renderPlaylist() {
+
+  playlistElement.innerHTML = "";
+
+  emptyMessage.style.display =
+    playlist.length ? "none" : "block";
+
+
+  playlist.forEach((track, index) => {
+
+    const li =
+      document.createElement("li");
+
+    li.className = "track";
+
+    li.draggable = true;
+
+    li.dataset.index = index;
+
+
+    if (index === currentIndex) {
+
+      li.classList.add("active");
+
+    }
+
+
+    const drag =
+      document.createElement("span");
+
+    drag.className = "drag";
+    drag.textContent = "☰";
+
+
+    const name =
+      document.createElement("span");
+
+    name.className = "track-name";
+    name.textContent = track.name;
+
+
+    const deleteButton =
+      document.createElement("button");
+
+    deleteButton.className =
+      "delete-track";
+
+    deleteButton.textContent = "×";
+
+    deleteButton.title =
+      "Remove track";
+
+
+    deleteButton.addEventListener(
+      "click",
+      async event => {
+
+        event.stopPropagation();
+
+        await deleteTrack(track.id);
+
+      }
+    );
+
+
+    li.appendChild(drag);
+    li.appendChild(name);
+    li.appendChild(deleteButton);
+
+
+    li.addEventListener(
+      "click",
+      () => loadTrack(index)
+    );
+
+
+    li.addEventListener(
+      "dragstart",
+      event => {
+
+        event.dataTransfer.setData(
+          "text/plain",
+          index
+        );
+
+      }
+    );
+
+
+    li.addEventListener(
+      "dragover",
+      event => {
+
+        event.preventDefault();
+
+      }
+    );
+
+
+    li.addEventListener(
+      "drop",
+      async event => {
+
+        event.preventDefault();
+
+        const fromIndex =
+          Number(
+            event.dataTransfer.getData(
+              "text/plain"
+            )
+          );
+
+        const toIndex = index;
+
+        await reorderTrack(
+          fromIndex,
+          toIndex
+        );
+
+      }
+    );
+
+
+    playlistElement.appendChild(li);
+
+  });
+
+}
+
+
+// -----------------------------
+// REORDER
+// -----------------------------
+
+async function reorderTrack(
+  fromIndex,
+  toIndex
+) {
+
+  if (fromIndex === toIndex) return;
+
+
+  const currentTrack =
+    currentIndex >= 0
+      ? playlist[currentIndex]
+      : null;
+
+
+  const [movedTrack] =
+    playlist.splice(fromIndex, 1);
+
+  playlist.splice(
+    toIndex,
+    0,
+    movedTrack
+  );
+
+
+  playlist.forEach(
+    (track, index) => {
+
+      track.order = index;
+
+    }
+  );
+
+
+  if (currentTrack) {
+
+    currentIndex =
+      playlist.indexOf(currentTrack);
+
+  }
+
+
+  await savePlaylistOrder();
+
+  renderPlaylist();
+
+}
+
+
+function savePlaylistOrder() {
+
+  return new Promise(resolve => {
+
+    const transaction =
+      db.transaction(
+        "tracks",
+        "readwrite"
+      );
+
+    const store =
+      transaction.objectStore(
+        "tracks"
+      );
+
+
+    playlist.forEach(track => {
+
+      store.put(track);
+
+    });
+
+
+    transaction.oncomplete = resolve;
+
+  });
+
+}
+
+
+// -----------------------------
+// LOAD TRACK
+// -----------------------------
+
+function loadTrack(index) {
+
+  if (
+    index < 0 ||
+    index >= playlist.length
+  ) return;
+
+
+  audio.pause();
+
+
+  if (currentObjectURL) {
+
+    URL.revokeObjectURL(
+      currentObjectURL
+    );
+
+  }
+
+
+  currentIndex = index;
+
+  const track =
+    playlist[index];
+
+
+  currentObjectURL =
+    URL.createObjectURL(track.file);
+
+
+  audio.src =
+    currentObjectURL;
+
+  audio.load();
+
+
+  nowPlaying.textContent =
+    track.name;
+
+
+  playPauseButton.textContent =
+    "▶";
+
+
+  progress.value = 0;
+
+  elapsed.textContent =
+    "0:00";
+
+  duration.textContent =
+    "0:00";
+
+
+  renderPlaylist();
+
+}
+
+
+// -----------------------------
+// PLAY / PAUSE
+// -----------------------------
+
+playPauseButton.addEventListener(
+  "click",
+  async () => {
+
+    if (currentIndex === -1) return;
+
+
+    if (audio.paused) {
+
+      try {
+
+        await audio.play();
+
+        playPauseButton.textContent =
+          "⏸";
+
+      } catch (error) {
+
+        console.error(error);
+
+      }
+
+    } else {
+
+      audio.pause();
+
+      playPauseButton.textContent =
+        "▶";
+
+    }
+
+  }
+);
+
+
+// -----------------------------
+// PREVIOUS
+// -----------------------------
+
+previousButton.addEventListener(
+  "click",
+  () => {
+
+    if (playlist.length === 0)
+      return;
+
+
+    if (currentIndex > 0) {
+
+      loadTrack(
+        currentIndex - 1
+      );
+
+    }
+
+  }
+);
+
+
+// -----------------------------
+// NEXT
+// -----------------------------
+
+nextButton.addEventListener(
+  "click",
+  () => {
+
+    if (playlist.length === 0)
+      return;
+
+
+    if (
+      currentIndex <
+      playlist.length - 1
+    ) {
+
+      loadTrack(
+        currentIndex + 1
+      );
+
+    }
+
+  }
+);
+
+
+// -----------------------------
+// PROGRESS
+// -----------------------------
+
+audio.addEventListener(
+  "timeupdate",
+  () => {
+
+    if (!audio.duration)
+      return;
+
+
+    progress.value =
+      (
+        audio.currentTime /
+        audio.duration
+      ) * 100;
+
+
+    elapsed.textContent =
+      formatTime(
+        audio.currentTime
+      );
+
+
+    duration.textContent =
+      formatTime(
+        audio.duration
+      );
+
+  }
+);
+
+
+audio.addEventListener(
+  "loadedmetadata",
+  () => {
+
+    duration.textContent =
+      formatTime(
+        audio.duration
+      );
+
+  }
+);
+
+
+progress.addEventListener(
+  "input",
+  () => {
+
+    if (!audio.duration)
+      return;
+
+
+    audio.currentTime =
+      (
+        progress.value /
+        100
+      ) *
+      audio.duration;
+
+  }
+);
+
+
+// -----------------------------
+// TRACK FINISHED
+// -----------------------------
+
+audio.addEventListener(
+  "ended",
+  () => {
+
+    playPauseButton.textContent =
+      "▶";
+
+
+    // Select next track,
+    // but DO NOT play it.
+
+    if (
+      currentIndex <
+      playlist.length - 1
+    ) {
+
+      loadTrack(
+        currentIndex + 1
+      );
+
+    } else {
+
+      progress.value = 100;
+
+    }
+
+  }
+);
+
+
+// -----------------------------
+// DELETE ONE TRACK
+// -----------------------------
+
+function deleteTrack(id) {
+
+  return new Promise(resolve => {
+
+    const transaction =
+      db.transaction(
+        "tracks",
+        "readwrite"
+      );
+
+    const store =
+      transaction.objectStore(
+        "tracks"
+      );
+
+    store.delete(id);
+
+
+    transaction.oncomplete =
+      async function() {
+
+        currentIndex = -1;
+
+        audio.pause();
+        audio.removeAttribute("src");
+
+        nowPlaying.textContent =
+          "No track selected";
+
+        await loadStoredTracks();
+
+        resolve();
+
+      };
+
+  });
+
+}
+
+
+// -----------------------------
+// CLEAR EVERYTHING
+// -----------------------------
+
+clearPlaylistButton.addEventListener(
+  "click",
+  () => {
+
+    const confirmed =
+      confirm(
+        "Remove all uploaded tracks?"
+      );
+
+    if (!confirmed) return;
+
+
+    const transaction =
+      db.transaction(
+        "tracks",
+        "readwrite"
+      );
+
+    const store =
+      transaction.objectStore(
+        "tracks"
+      );
+
+    store.clear();
+
+
+    transaction.oncomplete =
+      function() {
+
+        playlist = [];
+        currentIndex = -1;
+
+        audio.pause();
+        audio.removeAttribute("src");
+
+        nowPlaying.textContent =
+          "No track selected";
+
+        playPauseButton.textContent =
+          "▶";
+
+        progress.value = 0;
+
+        elapsed.textContent =
+          "0:00";
+
+        duration.textContent =
+          "0:00";
+
+        renderPlaylist();
+
+      };
+
+  }
+);
+
+
+// -----------------------------
+// FORMAT TIME
+// -----------------------------
+
+function formatTime(seconds) {
+
+  if (!Number.isFinite(seconds))
+    return "0:00";
+
+
+  const minutes =
+    Math.floor(seconds / 60);
+
+  const secs =
+    Math.floor(seconds % 60);
+
+
+  return (
+    minutes +
+    ":" +
+    secs
+      .toString()
+      .padStart(2, "0")
+  );
+
+}
+
+</script>
+
+</body>
+</html>
