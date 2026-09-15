@@ -438,7 +438,8 @@ fileInput.addEventListener(
 
     fileInput.value = "";
 
-    await loadStoredTracks();
+      await sortTracksAlphabetically();
+      await loadStoredTracks();
 
   }
 );
@@ -473,6 +474,37 @@ function saveFile(file) {
 
 }
 
+  async function sortTracksAlphabetically() {
+
+  return new Promise(resolve => {
+
+    const transaction = db.transaction("tracks", "readwrite");
+    const store = transaction.objectStore("tracks");
+    const request = store.getAll();
+
+    request.onsuccess = function() {
+
+      const tracks = request.result;
+
+      tracks.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, {
+          numeric: true,
+          sensitivity: "base"
+        })
+      );
+
+      tracks.forEach((track, index) => {
+        track.order = index;
+        store.put(track);
+      });
+
+    };
+
+    transaction.oncomplete = resolve;
+
+  });
+
+}
 
 // -----------------------------
 // DISPLAY PLAYLIST
